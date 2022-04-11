@@ -1,0 +1,485 @@
+:cp-version: 7.0.0
+:ak-version: 3.0.0
+:course-tag: 7.0.0-v1.0.0
+= Lab {lab-number} Fundamentals of Apache Kafka
+:imagesdir: ./images/fundamentals
+:source-highlighter: rouge
+:icons: font
+:dev-folder: ~/confluent-dev
+    
+== a. Introduction
+
+This document provides Hands-On Exercises for the course *Confluent Developer Skills for Building Apache Kafka*. You will use a setup that includes a virtual machine (VM) configured as a Docker host to demonstrate the distributed nature of Apache Kafka.
+
+The main Kafka cluster includes the following components, each running in a container:
+
+image::kafka-cluster.png[]
+
+.Components of the Confluent Platform
+[cols="20,80", options="header"]
+|===
+| Alias | Description
+| zookeeper | ZooKeeper
+| kafka | Kafka Broker
+| schema-registry | Schema Registry
+| connect | Kafka Connect
+| ksqldb-server | ksqlDB Server
+| control-center | Confluent Control Center
+| tools | secondary location for tools run against the cluster
+|===
+
+As you progress through the exercises you will selectively turn on parts of your cluster as they are needed.
+
+You will use Confluent Control Center to monitor the main Kafka cluster. To achieve this, we are also running the Control Center service which is backed by the same Kafka cluster.
+
+In this course we are using Confluent Platform version {cp-version} which includes Kafka {ak-version}.
+
+IMPORTANT: In production, Control Center should be deployed with its own dedicated Kafka cluster, separate from the cluster with production traffic. Using a dedicated metrics cluster is more resilient because it continues to provide system health monitoring even if the production traffic cluster experiences issues.
+
+=== Alternative Lab Environments
+
+As an alternative you can also download the VM to your laptop and run it in VirtualBox. Make sure you have the newest version of VirtualBox installed. Download the VM from this link:
+
+* https://s3.amazonaws.com/confluent-training-images-us-east-1/training-ubuntu-20-04-jan2022.ova[https://s3.amazonaws.com/confluent-training-images-us-east-1/training-ubuntu-20-04-jan2022.ova^]
+
+If you have installed Docker for Desktop on your Mac or Windows 10 Pro machine then you can run the labs there. But please note that your trainer might not be able to troubleshoot any potential problems if you are running the labs locally. If you choose to do this, follow the instructions at -> <<docker-local,Running Labs in Docker for Desktop>>.
+
+=== Command Line Examples
+
+Most exercises contain commands that must be run from the command line. These commands will look like this:
+
+[subs="verbatim,quotes"]
+----
+$ *pwd*
+/home/training
+----
+
+Commands you should type are shown in *bold*; non-bold text is an example of the output produced as a result of the command.
+
+[[preparing-lab]]
+=== Preparing the Labs
+
+Welcome to your lab environment! You are connected as user *training*, password *training*.
+
+[NOTE]
+====
+If you haven't already done so, you should open the *Exercise Guide* that is located on the lab virtual machine. To do so, open the *Confluent Training Exercises* folder that is located on the lab virtual machine desktop. Then double-click the shortcut that is in the folder to open the *Exercise Guide*.
+
+image::local-exercise-guide.png[align="center"]
+
+Copy and paste works best if you copy from the Exercise Guide on your lab virtual machine.
+
+* Standard Ubuntu keyboard shortcuts will work: `Ctrl+C` -> Copy, `Ctrl+V` -> Paste
+* In a Terminal window: `Ctrl+Shift+C` -> Copy, `Ctrl+Shift+V` -> Paste.
+
+If you find these keyboard shortcuts are not working you can use the right-click context menu for copy and paste.
+====
+
+. Open a terminal window
+
+. Clone the source code repository to the folder `confluent-dev` in your *home* directory:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *cd ~*
+$ *git clone --depth 1 --branch {course-tag} \
+    https://github.com/confluentinc/training-developer-src.git \
+    confluent-dev*  
+----
++
+IMPORTANT: If you chose to select another folder for the labs then note that many of our samples assume that the lab folder is `~/confluent-dev`. You will have to adjust all those command to fit your specific environment.
+
+. Navigate to the `confluent-dev` folder:
++
+[subs="verbatim,quotes"]
+----
+$ *cd ~/confluent-dev*
+----
+
+. Start the Kafka cluster:
++
+[subs="verbatim,quotes"]
+----
+$ *docker-compose up -d zookeeper kafka control-center*
+----
++
+You should see something similar to this:
++
+[subs="verbatim,quotes"]
+----
+Creating network "confluent-dev_default" with the default driver
+Creating control-center ... done
+Creating kafka          ... done
+Creating zookeeper      ... done
+----
++
+image::containers.png[width=80%,pdfwidth=80%,align=center]
+
++
+[TIP]
+--
+In the first steps of each exercise, you launch the containers needed for the exercise with `docker-compose up`.
+
+If at any time you want to get your environment back to a clean state use `docker-compose down` to end all of your containers. Then return to your last `docker-compose up` to get back to the beginning of an exercise.
+
+Exercises do not need to be completed in order.  You can start from the beginning of any exercise at any time.
+
+If you want to completely clear out your docker environment use the script on the VM at `~/docker-nuke.sh`. The nuke script will forcefully end all of your running docker containers.
+--
+
+. Monitor the cluster with:
++
+[subs="verbatim,quotes"]
+----
+$ *docker-compose ps*
+
+     Name                 Command            State                     Ports
+-----------------------------------------------------------------------------------------------
+control-center   /etc/confluent/docker/run   Up      0.0.0.0:9021->9021/tcp
+kafka            /etc/confluent/docker/run   Up      0.0.0.0:9092->9092/tcp
+zookeeper        /etc/confluent/docker/run   Up      0.0.0.0:2181->2181/tcp, 2888/tcp, 3888/tcp
+----
++
+All services should have `State` equal to `Up`.
+
+. You can also observe the stats of Docker on your VM:
++
+[subs="verbatim,quotes"]
+----
+$ *docker stats*
+
+CONTAINER ID        NAME                CPU %         MEM USAGE / LIMIT    MEM %    ...
+e174ec2aaa51        zookeeper           0.00%         86.88MiB / 7.787GiB  1.09%
+2bfac54019a2        kafka               0.01%         450.9MiB / 7.787GiB  5.65%
+14c813cf0cf1        control-center      0.01%         376.7MiB / 7.787GiB  4.72%
+
+----
++
+Press `Ctrl+C` to exit the Docker statistics.
+
+=== Testing the Installation
+
+. Use the `zookeeper-shell` command to verify that all Brokers have registered with ZooKeeper. You should see a single Broker listed as `[101]` in the last line of the output.
++
+[subs="verbatim,quotes"]
+----
+$ *zookeeper-shell zookeeper:2181 ls /brokers/ids*
+Connecting to zookeeper:2181
+
+WATCHER::
+
+WatchedEvent state:SyncConnected type:None path:null
+[101]
+----
+
+=== *OPTIONAL:* Analyzing the Docker Compose File
+
+. Open the file `docker-compose.yml` in your editor and:
+.. locate the various services that are listed in the table earlier in this section
+.. note that the container name (e.g. `zookeeper` or `kafka`) are used to resolve a particular service
+.. note how the broker (kafka) 
+... gets a unique ID assigned via environment variable `KAFKA_BROKER_ID` 
+... defines where to find the ZooKeeper instance
++
+[subs="verbatim,quotes"]
+----
+KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+----
+
+... sets the replication factor for the offsets topic to 1:
++
+[subs="verbatim,quotes"]
+----
+KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+----
+
+... configures the broker to send metrics to Confluent Control Center:
++
+[subs="verbatim,quotes"]
+----
+KAFKA_METRIC_REPORTERS: "io.confluent.metrics.reporter.ConfluentMetricsReporter"
+CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: "kafka:9092"
+----
+
+.. note how various services use the environment variable `..._BOOTSTRAP_SERVERS` to define the list of Kafka brokers that serve as bootstrap servers (in our case it's only one instance):
++
+[subs="verbatim,quotes"]
+----
+..._BOOTSTRAP_SERVERS: kafka:9092
+----
+
+.. note how e.g. the `connect` service and the `ksqldb-server` service define producer and consumer interceptors that produce data which can be monitored in Confluent Control Center:
++
+[subs="verbatim,quotes"]
+----
+io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor
+io.confluent.monitoring.clients.interceptor.MonitoringConsumerInterceptor
+----
+
+=== Using Confluent Control Center
+
+. On your host machine, open a new browser tab in Google Chrome.
+. Navigate to Control Center at the URL http://localhost:9021[http://localhost:9021^]:
++
+image::c3-clusters.png[pdfwidth=60%]
+
+. Select the cluster *CO*  and you will see this:
++
+image::c3-broker-overview.png[]
++
+NOTE: We have a single broker in our cluster. Also note the other important metrics of our Kafka cluster on this view.
+
+. Optional: Explore the other tabs of Confluent Control Center, such as *Topics* or *Cluster Settings*.
+
+== b. Using Kafka’s Command-Line Tools
+
+In this Hands-On Exercise you will start to become familiar with some of Kafka’s command-line tools. Specifically you will:
+
+* Use a tool to *create* a topic
+* Use a console program to *produce* a message
+* Use a console program to *consume* a message
+* Use a tool to explore data stored in ZooKeeper
+
+=== Prerequisites
+
+. Navigate to the `confluent-dev` folder:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *cd {dev-folder}*
+----
+
+. Run the Kafka cluster, including Confluent Control Center:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose up -d zookeeper kafka control-center*
+----
++
+If your containers are running from the previous exercise this command will simply tell you each container is up-to-date.
+
+=== Console Producing and Consuming
+
+Kafka has built-in command line utilities to produce messages to a Topic and read messages from a Topic. These are extremely useful to verify that Kafka is working correctly, and for testing and debugging.
+
+. Before we can start writing data to a topic in Kafka, we need to first create that topic using a tool called `kafka-topics`. From within the terminal window run the command:
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-topics*
+----
++
+This will bring up a list of parameters that the `kafka-topics` program can receive. Take a moment to look through the options.
+
+. Now execute the following command to create the topic `testing`:
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-topics --bootstrap-server kafka:9092 \
+    --create \
+    --partitions 1 \
+    --replication-factor 1 \
+    --topic testing*
+----
++
+We create the topic with a single partition and `replication-factor` of one.
++
+NOTE: We could have configured Kafka to allow *auto-creation* of topics. In this case we would not have had to do the above step and the topic would automatically be created when the first record is written to it. But this behavior is *strongly discouraged* in production. Always create your topics explicitly!
+
+. Now let's move on to start writing data into the topic just created. From within the terminal window run the command:
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-console-producer*
+----
++
+This will bring up a list of parameters that the `kafka-console-producer` program can receive. Take a moment to look through the options. We will discuss many of their meanings later in the course.
+
+. Run `kafka-console-producer` again with the required arguments:
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-console-producer --bootstrap-server kafka:9092 --topic testing*
+----
++
+The tool prompts you with a `>`.
+
+. At this prompt type:
++
+[subs="verbatim,quotes"]
+----
+> *some data*
+----
++
+And click *Enter*.
+
+. Now type:
++
+[subs="verbatim,quotes"]
+----
+> *more data*
+----
++
+And click *Enter*.
+
+. Type:
++
+[subs="verbatim,quotes"]
+----
+> *final data*
+----
++
+And click *Enter*.
+
+. Now we will use a Consumer to retrieve the data that was produced. Open a new terminal window and run the command:
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-console-consumer*
+----
++
+This will bring up a list of parameters that the `kafka-console-consumer` can receive. Take a moment to look through the options.
+
+. Run `kafka-console-consumer` again with the following arguments:
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-console-consumer \
+    --bootstrap-server kafka:9092 \
+    --from-beginning \
+    --topic testing*
+----
++
+After a short moment you should see all the messages that you produced using `kafka-console-producer` earlier:
++
+[subs="verbatim,quotes"]
+----
+some data
+more data
+final data
+----
+
+. Press `Ctrl+D` to exit the `kafka-console-producer` program.
+. Press `Ctrl+C` to exit `kafka-console-consumer`.
+
+=== OPTIONAL: Working with record keys
+
+By default, `kafka-console-producer` and `kafka-console-consumer` assume null keys. They can also be run with appropriate arguments to write and read keys as well as values.
+
+. Re-run the Producer with additional arguments to write (key,value) pairs to the Topic:
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-console-producer \
+    --bootstrap-server kafka:9092 \
+    --topic testing \
+    --property parse.key=true \
+    --property key.separator=,*
+----
+
+. Enter a few values such as:
++
+[subs="verbatim,quotes"]
+----
+> *1,my first record*
+> *2,another record*
+> *3,Kafka is cool*
+----
+
+. Press `Ctrl+D` to exit the producer.
+
+. Now run the *Consumer* with additional arguments to print the key as well as the value:
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-console-consumer \
+    --bootstrap-server kafka:9092 \
+    --from-beginning \
+    --topic testing \
+    --property print.key=true*
+
+null	some data
+null	more data
+null	final data
+1	my first record
+2	another record
+3	Kafka is cool
+----
++
+Note the `NULL` values for the first 3 records that we entered earlier...
+
+. Press `Ctrl+C` to exit the consumer.
+
+=== The ZooKeeper Shell
+
+. Kafka's data in ZooKeeper can be accessed using the `zookeeper-shell` command:
++
+[subs="verbatim,quotes"]
+----
+$ *zookeeper-shell zookeeper*
+Connecting to zookeeper
+Welcome to ZooKeeper!
+JLine support is disabled
+
+WATCHER::
+
+WatchedEvent state:SyncConnected type:None path:null
+----
+
+. From within the `zookeeper-shell` application, type `ls /` to view the directory structure in ZooKeeper. Note the `/` is required.
++
+[subs="verbatim,quotes"]
+----
+*ls /*
+[admin, brokers, cluster, config, consumers, controller, controller_epoch, isr_change_notification, latest_producer_id_block, log_dir_event_notification, zookeeper]
+----
+. Type `ls /brokers` to see this next level of the directory structure.
++
+[subs="verbatim,quotes"]
+----
+*ls /brokers*
+[ids, seqid, topics]
+----
+. Type `ls /brokers/ids` to see the broker ids for the Kafka cluster.
++
+[subs="verbatim,quotes"]
+----
+*ls /brokers/ids*
+[101]
+----
++
+Note the output `[101]`, indicating that we have a single broker with ID `101` in our cluster.
+
+. Type `get /brokers/ids/101` to see the metadata for broker 101.
++
+[subs="verbatim,quotes"]
+----
+*get /brokers/ids/101*
+{"listener_security_protocol_map":{"PLAINTEXT":"PLAINTEXT"},"endpoints":["PLAINTEXT://kafka:9092"],"jmx_port":-1,"host":"kafka","timestamp":"1581126250804","port":9092,"version":4}
+----
+. Type `get /brokers/topics/testing/partitions/0/state` to see the metadata for partition 0 of topic `testing`.
++
+[subs="verbatim,quotes"]
+----
+*get /brokers/topics/testing/partitions/0/state*
+{"controller_epoch":1,"leader":101,"version":1,"leader_epoch":0,"isr":[101]}
+----
++
+Note: During client startup, it requests cluster metadata from a broker in the `bootstrap.servers` list. The output of the two previous commands reflects a bit of this cluster metadata included in the broker response. We will cover this metadata request in more detail later in this course.
+. Press `Ctrl+D` to exit the ZooKeeper shell.
+
+=== Conclusion
+
+In this lab you have used Kafka command line tools to create a topic, write and read from this topic. Finally you have used the ZooKeeper shell tool to access data stored within ZooKeeper.
+
+{sp} +
+{sp} +
+{sp} +
+
+image::../stophand.png[align="center",width=200]
+
+[.text-center]
+**STOP HERE. THIS IS THE END OF THE EXERCISE.**
+
+<<<
+

@@ -1,0 +1,19 @@
+{
+    "name" : "DEV",
+    "virtual_machine_ami_tag" : {
+        "us-west-2" : "DEV CP 7.0 with docker images"
+      },
+    "virtual_machine_type" : "m5.xlarge",
+    "virtual_machine_startup" : [
+        "#!/bin/bash",
+        "su training <<'EOF'",
+        "exercise_download.sh DEV-7.0.0-v1.0.0.zip exercise-book-7.0.0-v1.0.0.html \"Confluent Developer Skills for Building Apache Kafka: Exercise Book\"",
+        "EOF",
+        "echo started warming $(date) >> ebs_warming.txt",
+        "dd if=/dev/nvme0n1 of=/dev/null bs=1M",
+        "echo ended warming $(date) >> ebs_warming.txt"
+    ],
+    "guac_access" : "rdp",
+    "session_duration_stop" : "8hours",
+    "session_duration_delete": "10days"
+}

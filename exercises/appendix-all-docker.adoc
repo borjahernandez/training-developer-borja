@@ -1,0 +1,109 @@
+:source-highlighter: rouge
+:icons: font
+
+= Running All Labs with Docker
+
+[[docker-local]]
+== Running Labs in Docker for Desktop
+
+If you have installed Docker for Desktop on your Mac or Windows 10 Pro machine you are able to complete the course by building and running your applications from the command line.
+
+* Increase the memory available to Docker Desktop to a minimum of 6 GiB. See the advanced settings for link:https://docs.docker.com/docker-for-mac/#advanced[Docker Desktop for Mac^], and link:https://docs.docker.com/docker-for-windows/#advanced[Docker Desktop for Windows^].
+
+* Follow the instructions at -> <<preparing-lab,Preparing the Labs>> to `git clone` the source code.  The exercise source code will now be on your host machine where you can use any editor to complete the exercises or experiment.
+
+* From the location where you cloned the source code, launch a tools container:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose up -d tools*
+----
++
+All the command line instructions will work from the tools container.  This container has been preconfigured with all of the tools you use in the exercises, e.g. `kafka-topics`, `gradle`, `dotnet` and `python`.
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose exec tools bash*
+root@tools:/#
+----
++
+The source code cloned onto your host machine is present in the tools container as a https://docs.docker.com/storage/bind-mounts/[bind mount^]. You can see the source code in `~/confluent-dev`.
++
+[subs="verbatim,quotes,attributes"]
+----
+root@tools:/# *ls ~/confluent-dev/*
+README.md  challenge  docker-compose.yml  postgres  solution  update-hosts.sh  webserver  webserver-avro
+----
++
+Anywhere you are instructed to open additional terminal windows you can `exec` additional bash shells on the tools container with `docker-compose exec tools bash` on your host machine.
+
+* The `docker` or `docker-compose` instructions are run on your host machine.
+
+=== Running the Exercise Applications
+
+From the `tools` container you can use command line alternatives to the VS Code steps used in the instructions.  Complete the coding exercises with an editor of your choice on your host machine. When instructed to run code using the VS Code debugger, instead run your code from within the tools container using these terminal commands:
+
+* For Java applications: `./gradlew run`
+* For C# applications: `dotnet run`
+* For Python applications: `python3 main.py`
+
+Where you are instructed to stop debugging in VS code use `Ctrl+C` to end the running exercise.
+
+=== Getting Started
+
+Let's apply this to get you started with the *Introduction* exercise.
+
+. Open a two terminal windows. The first window will be used for `docker` and `docker-compose` commands on your host machine. The second window will be used for the commands run in the tools container.
+
+. In the first terminal window, clone the source code repository to the folder `confluent-dev`:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *git clone --depth 1 --branch {course-tag} \
+    https://github.com/confluentinc/training-developer-src.git \
+    confluent-dev*  
+----
+
+. Start the Kafka cluster:
++
+[subs="verbatim,quotes"]
+----
+$ *docker-compose up -d zookeeper kafka control-center*
+----
+
+. In the second terminal window launch the tools container, and open a bash shell.
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose up -d tools*
+$ *docker-compose exec tools bash*
+----
+
+. The exercise command line instructions can now be run in the tools container. The first command we have in the *Introduction* exercise uses `zookeeper-shell`:
++
+[subs="verbatim,quotes,attributes"]
+----
+root@tools:/# *zookeeper-shell zookeeper:2181 ls /brokers/ids*
+----
+
+. If we skip ahead to the *Kafka Producer* coding exercise, this begins with a command to change to the challenge directory. You can do this in the second terminal window where you are accessing the tools container. Using the Java challenge as an example:
++
+[subs="verbatim,quotes,attributes"]
+----
+root@tools:/# *cd ~/confluent-dev/challenge/java-producer*
+----
+
+. The next command launches additional containers. Run this command in the first terminal window:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose up -d zookeeper kafka control-center create-topics webserver*
+----
+
+. Complete the source code challenges in `confluent-dev/challenge/java-producer/src/main/java/clients/Producer.java` on your host machine.  Now you can build and run in the second terminal window:
++
+[subs="verbatim,quotes,attributes"]
+----
+root@tools:/# *cd ~/confluent-dev/challenge/java-producer*
+root@tools:/# *./gradlew run*
+----

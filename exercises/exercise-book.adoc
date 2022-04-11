@@ -1,0 +1,46 @@
+:course-tag: 7.0.0-v1.0.0
+= Confluent Developer Skills for Building Apache Kafka®: Exercise Book
+:revnumber: {course-tag}
+:toc:
+:toclevels: 2
+:source-highlighter: rouge
+:icons: font
+:doctype: book
+:table-stripes: even
+
+:leveloffset: +1
+
+[preface]
+include::license.adoc[]
+
+:lab-number: 01
+include::fundamentals.adoc[]
+
+:lab-number: 02
+include::producing.adoc[]
+
+:lab-number: 04
+include::consuming.adoc[]
+
+:lab-number: 07
+include::schema-management.adoc[]
+
+:lab-number: 08
+include::stream-processing.adoc[]
+
+:lab-number: 09
+include::ksqldb.adoc[]
+
+:lab-number: 11
+include::data-pipelines.adoc[]
+
+:lab-number: 12
+include::offset-for-times.adoc[]
+
+:lab-number: 13
+include::increasing-partition-count.adoc[]
+
+[appendix]
+include::appendix-all-docker.adoc[]
+
+:leveloffset: -1

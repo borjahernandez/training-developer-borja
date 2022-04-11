@@ -1,0 +1,107 @@
+:imagesdir: ./images/stream-processing
+:source-highlighter: rouge
+:icons: font
+= Lab {lab-number} Stream Processing with Kafka Streams
+
+== a. Kafka Streams (Java)
+
+The goal of this lab is to perform stateless operations on your `driver-positions-avro` topic to filter out the events from `driver-2`, add a new field in the value containing the Latitude and Longitude in `String` format and write the results to a new topic `driver-positions-string-avro`.
+
+=== Prerequisites
+
+. Navigate to the project folder:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *cd ~/confluent-dev/challenge/java-streams-avro*
+----
+
+. Run the Kafka cluster:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose up -d zookeeper kafka control-center create-topics \
+     schema-registry producer1 producer2 producer3 producer4 \
+     webserver-avro webserver-streams*
+----
++
+image::lab-streams-diagram.svg[width=100%,pdfwidth=100%,align=center]
++ 
+The new `producer` containers are running exactly the same code created in the _Avro Producer_ exercise. These containers will simulate four drivers driving around a city. You can see the activity on the `driver-positions-avro` topic in the web application http://localhost:3002[http://localhost:3002^].
+
+
+=== Writing the Streams Processing
+
+. Open the project in Visual Studio Code:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *code .*
+----
+
+. Open the implementation file `src/main/java/clients/StreamsApp.java`
+
+. Let's focus on the topology from Line 66 in the code. See the Kafka Streams DSL documentation for https://docs.confluent.io/platform/current/streams/developer-guide/dsl-api.html#stateless-transformations[stateless transformations^]. In this lab, you'll use two transformations, `filter()` and `mapValues()`.
+. The `filter()` method can be defined using a lambda expression where the inputs are the `key` and `value` of the event. It also requires a predicate/condition to define if the event is filtered or not. +
+Go to Lines 88-89 in the code and try to define the predicate to filter out events from `driver-2`.
++
++++ <details><summary> +++
+Solution:
++++ </summary><div> +++
++
+[source,java]
+----
+final KStream<String, PositionValue> positionsFiltered = positions.filter(
+        (key,value) -> !key.equals("driver-2"));
+
+----
++++ </div></details> +++
+
+. The `mapValues()` method applies a transformation to the value of each event. You can use a lambda expression to define the transformation where the input is just the value. +
+Go to Lines 96-104 and try to complete the missing pieces to change the value from PositionValue type to PositionString type, which contains a new field `positionString`.
++
++++ <details><summary> +++
+Solution:
++++ </summary><div> +++
++
+[source,java]
+----
+final KStream<String, PositionString> positionsString = positionsFiltered.mapValues(
+    value -> {
+        final Double latitude = value.getLatitude();
+        final Double longitude = value.getLongitude();
+        final String positionString = "Latitude: " + String.valueOf(latitude) +
+                                      ", Longitude: " + String.valueOf(longitude);
+        return new PositionString(latitude, longitude, positionString);
+    }
+);
+
+----
++++ </div></details> +++
+
+
+
+. Run the application by selecting the menu *Run* -> *Start Debugging* in VS Code.
+. View the new topic with the `kafka-avro-console-consumer` tool:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *kafka-avro-console-consumer --bootstrap-server kafka:9092 \
+    --property schema.registry.url=http://schema-registry:8081 \
+    --topic driver-positions-string-avro --property print.key=true \
+    --key-deserializer=org.apache.kafka.common.serialization.StringDeserializer \
+    --from-beginning*
+----
+
+. Visit the web application subscribed to `driver-positions-string-avro` at http://localhost:3003/[http://localhost:3003/^]
+
+. Stop the debugger in VS Code.
+
+<<<
+
+image::../stophand.png[align="center",width=200]
+
+[.text-center]
+**STOP HERE. THIS IS THE END OF THE EXERCISE.**
+
+<<<

@@ -1,0 +1,379 @@
+:imagesdir: ./images/data-pipelines
+:source-highlighter: rouge
+:icons: font
+= Lab {lab-number} Data Pipelines with Kafka Connect
+
+== a. Kafka Connect - Database to Kafka
+
+The goal of this lab is to build a data pipeline that captures all the changes to a database table `driver-profiles` and writes the changes to a Kafka topic `driver-profiles-avro`. This can all be automated using the Kafka Connect and the JDBC source connector.
+
+=== Prerequisites
+
+. Navigate to the project folder:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *cd ~/confluent-dev*
+----
+
+. Run the Kafka cluster:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose up -d zookeeper kafka control-center create-topics \
+     schema-registry connect postgres*
+----
++
+image::kafka-connect.png[width=80%,pdfwidth=80%,align=center]
++ 
+You have now turned on containers for Kafka Connect and a Postgres database. If you look in `postgres/docker-entrypoint-initdb.d/001-driver.sql` you can see the SQL script used to create and populate the `driver-profiles` table in the Postgres database.
+
+=== Inspecting Postgres
+
+. Inspect the contents of the `driver-profiles` table by first connecting to the Postgres database:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *psql -h postgres -U postgres*
+psql (11.2)
+Type "help" for help.
+
+postgres=#
+----
+
+. At the postgres prompt use a SQL select statement to view the contents of the `driver-profiles` table:
++
+[subs="verbatim,quotes,attributes"]
+----
+postgres=# **select * from driver;**
+ id | driverkey | firstname | lastname |  make   |  model   |         timestamp
+----+-----------+-----------+----------+---------+----------+----------------------------
+  1 | driver-1  | Randall   | Palmer   | Toyota  | Offset   | 2020-01-26 01:11:31.707991
+  2 | driver-2  | Razı      | İnönü    | Nissan  | Narkhede | 2020-01-26 01:11:31.709005
+...
+----
+
+. Press `Q` to exit the Table View.
+. Exit `psql` by pressing `Ctrl+D`.
+
+=== Install the Kafka Connect JDBC Connector
+
+We use the Kafka Connect JDBC connector in this exercise so we need to install it on the worker.
+
+. Install the connector with the following command (and expected response):
++
+[subs="verbatim,quotes"]
+----
+$ *docker-compose exec -u root connect confluent-hub install confluentinc/kafka-connect-jdbc:10.0.0*
+The component can be installed in any of the following Confluent Platform installations:
+  1. / (installed rpm/deb package)
+  2. / (where this tool is installed)
+Choose one of these to continue the installation (1-2):
+----
+
+. At the prompt, type `1` and press *Enter*:
++
+[subs="verbatim,quotes"]
+----
+Choose one of these to continue the installation (1-2): *1*
+----
+
+
+. You'll be prompted again. At the prompt, type `y` and press *Enter*.
++
+[subs="verbatim,quotes"]
+----
+Do you want to install this into /usr/share/confluent-hub-components? (yN) *y*
+----
+
+. You'll be prompted again. At the prompt, type `y` and press *Enter*.
++
+[subs="verbatim,quotes"]
+----
+Component's license:
+Confluent Community License
+https://www.confluent.io/confluent-community-license
+I agree to the software license agreement (yN) *y*
+----
+
+. You'll be prompted again. At the prompt, type `y` and press *Enter*.
++
+[subs="verbatim,quotes"]
+----
+Downloading component Kafka Connect JDBC 10.0.0, provided by Confluent, Inc. from Confluent Hub and installing into /usr/share/java/kafka
+Detected Worker's configs:
+  1. Standard: /etc/kafka/connect-distributed.properties
+  2. Standard: /etc/kafka/connect-standalone.properties
+  3. Standard: /etc/schema-registry/connect-avro-distributed.properties
+  4. Standard: /etc/schema-registry/connect-avro-standalone.properties
+  5. Used by Connect process with PID : /etc/kafka-connect/kafka-connect.properties
+Do you want to update all detected configs? (yN) *y*
+----
++
+The installation completes.
++
+----
+Adding installation directory to plugin path in the following files:
+  /etc/kafka/connect-distributed.properties
+  /etc/kafka/connect-standalone.properties
+  /etc/schema-registry/connect-avro-distributed.properties
+  /etc/schema-registry/connect-avro-standalone.properties
+  /etc/kafka-connect/kafka-connect.properties
+
+Completed
+----
+
+. To complete the installation, we need to restart the `connect` container:
++
+[subs="verbatim,quotes"]
+----
+$ *docker-compose restart connect*
+----
+
+. Verify that the Connect Worker successfully restarted prior to continuing to the next step:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ **docker-compose logs connect | grep -i "INFO .* Finished starting connectors and tasks"**
+connect              | [2022-04-07 18:16:59,032] INFO [Worker clientId=connect-1, groupId=connect] Finished starting connectors and tasks (org.apache.kafka.connect.runtime.distributed.DistributedHerder)
+connect              | [2022-04-07 18:32:14,011] INFO [Worker clientId=connect-1, groupId=connect] Finished starting connectors and tasks (org.apache.kafka.connect.runtime.distributed.DistributedHerder)
+----
++
+NOTE: Repeat this command until the *Finished starting connectors and tasks* message appears twice.
+
+
+=== Configure the AVRO source connector
+
+. Add a JDBC source connector via command line with the `curl` command below. Let's focus on the transformations that are happening in the connector settings. You can read more about transformations in the documentation for https://docs.confluent.io/current/connect/transforms/index.html[Kafka Connect Transformations^]. 
+.. *RegexRouter* By default the records would be written to a topic with the same name as the table. The setting here will update record topic to `driver-profiles-avro`.
+.. *ValueToKey* The connector is configured to use the `driverkey` property as the record key. At this point the key in the record would look like `{driverkey=driver-5}`.
+.. *ExtractField$Key* The connector extracts the `driverkey` field from the key and replaces the entire key with the extracted field. A key of `{driverkey=driver-5}` would be replaced with `driver-5`.
++
+[subs="verbatim,quotes"]
+----
+$ **curl -X POST \
+  -H "Content-Type: application/json" \
+  --data '{
+    "name": "Driver-Connector-Avro",
+    "config": {
+      "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+      "connection.url": "jdbc:postgresql://postgres:5432/postgres",
+      "connection.user": "postgres",
+      "table.whitelist": "driver",
+      "topic.prefix": "",
+      "mode":"timestamp+incrementing",
+      "incrementing.column.name": "id",
+      "timestamp.column.name": "timestamp",
+      "table.types": "TABLE",
+      "numeric.mapping": "best_fit",
+      "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+      "value.converter": "io.confluent.connect.avro.AvroConverter",
+      "value.converter.schema.registry.url": "http://schema-registry:8081",
+      "transforms": "suffix,createKey,extractKey",
+      "transforms.suffix.type":"org.apache.kafka.connect.transforms.RegexRouter",
+      "transforms.suffix.regex":"(.*)",
+      "transforms.suffix.replacement":"$1-profiles-avro",
+      "transforms.createKey.type": "org.apache.kafka.connect.transforms.ValueToKey",
+      "transforms.createKey.fields": "driverkey",
+      "transforms.extractKey.type": "org.apache.kafka.connect.transforms.ExtractField$Key",
+      "transforms.extractKey.field": "driverkey"
+    }
+}' http://connect:8083/connectors**
+----
++
+the answer should be something like this:
++
+[source,JSON]
+----
+{"name":"Driver-Connector-Avro","config":{"connector.class":"io.confluent.connect.jdbc.JdbcSourceConnector","connection.url":"jdbc:postgresql://postgres:5432/postgres","connection.user":"postgres","table.whitelist":"driver","topic.prefix":"","mode":"timestamp+incrementing","incrementing.column.name":"id","timestamp.column.name":"timestamp","table.types":"TABLE","numeric.mapping":"best_fit","key.converter":"org.apache.kafka.connect.storage.StringConverter","value.converter":"io.confluent.connect.avro.AvroConverter","value.converter.schema.registry.url":"http://schema-registry:8081","transforms":"suffix,createKey,extractKey","transforms.suffix.type":"org.apache.kafka.connect.transforms.RegexRouter","transforms.suffix.regex":"(.*)","transforms.suffix.replacement":"$1-profiles-avro","transforms.createKey.type":"org.apache.kafka.connect.transforms.ValueToKey","transforms.createKey.fields":"driverkey","transforms.extractKey.type":"org.apache.kafka.connect.transforms.ExtractField$Key","transforms.extractKey.field":"driverkey","name":"Driver-Connector-Avro"},"tasks":[],"type":"source"}
+----
+
+. Let's see what we get:
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-avro-console-consumer \
+    --bootstrap-server kafka:9092 \
+    --property schema.registry.url=http://schema-registry:8081 \
+    --topic driver-profiles-avro \
+    --property print.key=true \
+    --key-deserializer=org.apache.kafka.common.serialization.StringDeserializer \
+    --from-beginning*
+----
++
+and we should see something like this:
++
+[subs="verbatim,quotes"]
+----
+driver-2	{"id":2,"driverkey":"driver-2","firstname":"Razı","lastname":"İnönü",...
+driver-6	{"id":6,"driverkey":"driver-6","firstname":"William","lastname":"Peterson",...
+driver-10	{"id":10,"driverkey":"driver-10","firstname":"Aaron","lastname":"Gill",...
+...
+----
++
+NOTE: It may take several seconds for the records to appear.
+
+. Exit the consumer with `Ctrl+C`.
+
+=== Configure the Protobuf source connector
+
+Schema Registry 5.5 added support for Protobuf and JSON Schema along with Avro. You can now add a connector using a `ProtobufConverter` class.  The connector will source the same data from the Postgres database, register a Protobuf schema, and write the Protobuf serialized bytes to the Kakfa topic `driver-profiles-protobuf`.
+
+. The command below is nearly the same as your previous command.  We have changed the: name, value.converter, and topic suffix.
++
+[subs="verbatim,quotes"]
+----
+$ **curl -X POST \
+  -H "Content-Type: application/json" \
+  --data '{
+    "name": "Driver-Connector-Protobuf",
+    "config": {
+      "connector.class": "io.confluent.connect.jdbc.JdbcSourceConnector",
+      "connection.url": "jdbc:postgresql://postgres:5432/postgres",
+      "connection.user": "postgres",
+      "table.whitelist": "driver",
+      "topic.prefix": "",
+      "mode":"timestamp+incrementing",
+      "incrementing.column.name": "id",
+      "timestamp.column.name": "timestamp",
+      "table.types": "TABLE",
+      "numeric.mapping": "best_fit",
+      "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+      "value.converter": "io.confluent.connect.protobuf.ProtobufConverter",
+      "value.converter.schema.registry.url": "http://schema-registry:8081",
+      "transforms": "suffix,createKey,extractKey",
+      "transforms.suffix.type":"org.apache.kafka.connect.transforms.RegexRouter",
+      "transforms.suffix.regex":"(.*)",
+      "transforms.suffix.replacement":"$1-profiles-protobuf ",
+      "transforms.createKey.type": "org.apache.kafka.connect.transforms.ValueToKey",
+      "transforms.createKey.fields": "driverkey",
+      "transforms.extractKey.type": "org.apache.kafka.connect.transforms.ExtractField$Key",
+      "transforms.extractKey.field": "driverkey"
+    }
+}' http://connect:8083/connectors**
+----
++
+the answer should be something like this:
++
+[source,JSON]
+----
+{"name":"Driver-Connector-Protobuf","config":{"connector.class":"io.confluent.connect.jdbc.JdbcSourceConnector","connection.url":"jdbc:postgresql://postgres:5432/postgres","connection.user":"postgres","table.whitelist":"driver","topic.prefix":"","mode":"timestamp+incrementing","incrementing.column.name":"id","timestamp.column.name":"timestamp","table.types":"TABLE","numeric.mapping":"best_fit","key.converter":"org.apache.kafka.connect.storage.StringConverter","value.converter":"io.confluent.connect.protobuf.ProtobufConverter","value.converter.schema.registry.url":"http://schema-registry:8081","transforms":"suffix,createKey,extractKey","transforms.suffix.type":"org.apache.kafka.connect.transforms.RegexRouter","transforms.suffix.regex":"(.*)","transforms.suffix.replacement":"$1-profiles-protobuf ","transforms.createKey.type":"org.apache.kafka.connect.transforms.ValueToKey","transforms.createKey.fields":"driverkey","transforms.extractKey.type":"org.apache.kafka.connect.transforms.ExtractField$Key","transforms.extractKey.field":"driverkey","name":"Driver-Connector-Protobuf"},"tasks":[],"type":"source"}
+----
+
+. The results will look the same as the AVRO topic. This is because `kafka-protobuf-console-consumer` is deserializing the bytes.
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-protobuf-console-consumer \
+    --bootstrap-server kafka:9092 \
+    --property schema.registry.url=http://schema-registry:8081 \
+    --topic driver-profiles-protobuf \
+    --property print.key=true \
+    --key-deserializer=org.apache.kafka.common.serialization.StringDeserializer \
+    --from-beginning*
+----
+
+. Exit the consumer with `Ctrl+C`.
+
+. The bytes in the `driver-profiles-protobuf` topic are Protobuf serialized. We can see the raw bytes using `kafkacat` and piping the results to `hexdump`. See more about kafkacat at https://github.com/edenhill/kafkacat[https://github.com/edenhill/kafkacat^]. From the kafkacat documentation:
++
+[quote]
+kafkacat is a generic non-JVM producer and consumer for Apache Kafka >=0.8, think of it as a netcat for Kafka.
+
+. Run the command below to see the raw bytes of one message on the `driver-profiles-protobuf` topic. Let's focus on the options we will be using:
++
+`-b` Bootstrap broker(s).
++
+`-C` Consume mode.
++
+`-c1` Exit after consuming 1 message.
++
+`-t` Topic to consume from.
++
+[subs="verbatim,quotes"]
+----
+$ *kafkacat -b kafka:9092 -C -c1 -t driver-profiles-protobuf | hexdump -C*
+00000000  00 00 00 00 03 00 08 09  12 08 64 72 69 76 65 72  |..........driver|
+00000010  2d 39 1a 06 e5 8a a0 e5  a5 88 22 06 e5 b0 8f e6  |-9........".....|
+00000020  9e 97 2a 02 47 4d 32 08  42 65 72 67 6c 75 6e 64  |..*.GM2.Berglund|
+00000030  3a 0c 08 af dd bf f6 05  10 c0 e2 b9 e3 01 0a     |:..............|
+0000003f
+----
++
+The https://docs.confluent.io/current/schema-registry/serdes-develop/index.html#wire-format[wire format^] documentation explains the format of the bytes.  The 0th byte is `00` for the format version number.  The next 4 bytes `00 00 00 03` tell us the schema id.  The remaining bytes are the Protobuf serialized data.
+
+. For comparison you can inspect the raw bytes on the `driver-profiles-avro` topic.  You can see the the format version number, schema id and _AVRO_ serialized data.
++
+[subs="verbatim,quotes"]
+----
+$ *kafkacat -b kafka:9092 -C -c1 -t driver-profiles-avro | hexdump -C*
+00000000  00 00 00 00 01 12 10 64  72 69 76 65 72 2d 39 0c  |.......driver-9.|
+00000010  e5 8a a0 e5 a5 88 0c e5  b0 8f e6 9e 97 04 47 4d  |..............GM|
+00000020  10 42 65 72 67 6c 75 6e  64 ae 8b a2 a0 ce 5c 0a  |.Berglund.....\.|
+00000030
+----
+
+. We can request the contents of schema just created via the Schema Registry REST API:
++
+[subs="verbatim,quotes"]
+----
+$ *curl schema-registry:8081/subjects/driver-profiles-protobuf-value/versions/1/schema*
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+message driver {
+  int32 id = 1;
+  string driverkey = 2;
+  string firstname = 3;
+  string lastname = 4;
+  string make = 5;
+  string model = 6;
+  google.protobuf.Timestamp timestamp = 7;
+}
+----
+
+<<<
+
+=== Extra Challenges and Questions
+
+. Leave the `kafka-avro-console-consumer` reading from the `driver-profiles-avro` topic in a terminal window.  Use `psql` to update a row in the `driver` table, and see the update appear on the  `driver-profiles-avro` topic. Hint: the `timestamp` column will need to be updated for connect to detect the changes, set timestamp to `now()` for the current date time.
+. Can you use `kafka-topics` to determine the log cleaning policy for the `driver-profiles-avro` topic?  Why would this policy have been chosen?
+
+
+=== Extra Challenges and Questions Solutions
+
+. This `UPDATE` statement in `psql` will update a single row in the drivers table:
++
+[source,sql]
+----
+UPDATE driver SET firstname='Bill', timestamp=now() WHERE id = 6;
+----
++
+You will see the update appear on the `driver-profiles-avro` topic:
++
+[source]
+----
+driver-6 {"id":6,"driverkey":"driver-6","firstname":"Bill","lastname":"Peterson","make":"GM","model":"Bergland","timestamp":"1584128781527"}
+----
+
+. We can see the topic property with `kafka-topics`:
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-topics --bootstrap-server kafka:9092 --describe --topic driver-profiles-avro*
+Topic: driver-profiles-avro	PartitionCount: 3	ReplicationFactor: 1	Configs: cleanup.policy=compact
+----
++
+Log compaction means we will always retain at least the last known value for each message. In a follow up exercise we will create a ksqlDB table,  a table is an abstraction of a changelog stream. We are only interested in the most recent record for a key, and can clean out any previous values.
+
+=== Conclusion
+
+In this exercise you have used a Kafka Connect JDBC source connector to import data residing in PostgreSQL database into the topics `driver-profiles-avro` and `driver-profiles-protobuf` in the Kafka cluster. This data can now, e.g., be used to enrich our driver position data in the next exercise.
+
+image::../stophand.png[align="center",width=200]
+
+[.text-center]
+**STOP HERE. THIS IS THE END OF THE EXERCISE.**
+
+<<<

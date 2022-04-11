@@ -1,0 +1,15 @@
+:icons: font
+
+= Copyright & Trademarks
+
+{sp} +
+{sp} +
+{sp} +
+{sp} +
+
+[.text-center]
+[big]#Copyright © Confluent, Inc. 2014-2022. https://www.confluent.io/confluent-privacy-statement/[Privacy Policy] | https://www.confluent.io/terms-of-use/[Terms & Conditions]. +
+Apache, Apache Kafka, Kafka and the Kafka logo are trademarks of the +
+http://www.apache.org/[Apache Software Foundation]#
+
+<<<

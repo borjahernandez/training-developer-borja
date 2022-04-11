@@ -1,0 +1,201 @@
+:imagesdir: ./images/design
+:source-highlighter: rouge
+:icons: font
+= Lab {lab-number} Challenges with Offsets
+
+== a. Kafka Consumer - offsetsForTimes (Java, C#, Python)
+
+The goal of this lab is to update the consumer application to begin the consumption from a date time setting.
+
+=== Prerequisites
+
+. Use the command in the table below to navigate to the project folder for your language. Click the associated hyperlink to open the API reference:
++
+[cols="1,3,2",options="header"]
+|===
+| Language
+| Command
+| API Reference
+
+| Java
+| `*cd ~/confluent-dev/challenge/java-consumer-prev*`
+| https://kafka.apache.org/21/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html#offsetsForTimes-java.util.Map-[offsetsForTimes^]
+
+| C#
+| `*cd ~/confluent-dev/challenge/dotnet-consumer-prev*`
+| https://docs.confluent.io/current/clients/confluent-kafka-dotnet/api/Confluent.Kafka.IConsumer-2.html#Confluent_Kafka_IConsumer_2_OffsetsForTimes_System_Collections_Generic_IEnumerable_Confluent_Kafka_TopicPartitionTimestamp__System_TimeSpan_[OffsetsForTimes^]
+
+| Python
+| `*cd ~/confluent-dev/challenge/python-consumer-prev*`
+| https://docs.confluent.io/current/clients/confluent-kafka-python/index.html#confluent_kafka.Consumer.offsets_for_times[offsets_for_times^]
+
+|===
+
+. Run the Kafka cluster:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose up -d zookeeper kafka control-center create-topics webserver*
+----
+
+. If you are completing the C# or Python exercise, install the dependencies.
+.. For C#:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *dotnet restore*
+----
++ 
+.. For Python:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *pip3 install -r requirements.txt*
+----
++
+. Open the project in Visual Studio Code:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *code .*
+----
+
+=== Writing the Consumer with offsetsForTimes
+
+. First create at least 5 minutes of data in the `driver-positions` topic. Run the producer solution in a terminal window for at least 5 minutes:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *cd ~/confluent-dev/solution/java-producer && \
+  ./gradlew run --console plain*
+----
+
+. Open the implementation file for your language of choice:
+** Java: `src/main/java/clients/Consumer.java`
+** C#: `Program.cs`
+** Python: `main.py`
+
+. Locate the `TODO` comments in your implementation file. Use the API reference for your language to attempt each challenge. Solutions are provided at the end of this lab and in the `~/confluent-dev/solution` folder.
+
+. At any time run the application by selecting the menu *Run* -> *Start Debugging* in VS Code. As you complete the challenges try to produce a similar output from your application:
++
+[subs="verbatim,quotes,attributes"]
+----
+Starting Java Consumer.
+Seeking partition 1 to offset 111
+driver-1,47.61283381989413,-122.34560354160932
+driver-1,47.612775111954,-122.34550277424941
+driver-1,47.61271588266544,-122.34540267699794
+driver-1,47.61265662130749,-122.34530262107957
+...
+----
+
+. Open the web application at http://localhost:3001[http://localhost:3001^].
+. The web application can plot the output from your consumer on the map. Copy into your clipboard the comma separated output from your application, for example:
++
+[subs="verbatim,quotes,attributes"]
+----
+driver-1,47.61283381989413,-122.34560354160932
+driver-1,47.612775111954,-122.34550277424941
+driver-1,47.61271588266544,-122.34540267699794
+driver-1,47.61265662130749,-122.34530262107957
+----
+
+. In the web application select the *Plot Data* tab, paste your comma separated output, and click *view*. The map will plot your data points onto the map, giving you a representation of your driver data beginning at a time 5 minutes ago.
++
+image::plot-data.png[width=50%,pdfwidth=50%,align=center]
+
+. When you have completed the challenges, close VS Code.
+. Return to the terminal window running the producer solution.  Press `Ctrl+C` to exit the producer.
+
+=== Extra Challenges and Questions
+
+. In this exercise we are seeking to an offset based on a timestamp. Can you find the method you would use to seek to the beginning of a partition?
+
+<<<
+
+=== Java Solution
+
+.solution/java-consumer-prev/src/main/java/clients/Consumer.java
+[source,java]
+----
+// TODO: Request the offsets for the start timestamp
+final Map<TopicPartition, OffsetAndTimestamp> startOffsets =
+    consumer.offsetsForTimes(timestampsToSearch);
+----
+
+[source,java]
+----
+// TODO: Print the new offset for each partition
+System.out.printf("Seeking partition %d to offset %d\n", entry.getKey().partition(),
+    entry.getValue().offset());
+----
+
+=== C# Solution
+
+.solution/dotnet-consumer-prev/Program.cs
+[source,c#]
+----
+// TODO: Request the offsets for the start timestamp
+var offsets = c.OffsetsForTimes(timestamps, TimeSpan.FromMinutes(1));
+----
+
+[source,c#]
+----
+// TODO: Print the new offset for each partition
+Console.WriteLine($"Moving partion {offset.Partition.Value} to {offset.Offset.Value}");
+----
+
+=== Python Solution
+
+.solution/python-consumer-prev/main.py
+[source,py]
+----
+#TODO: Request the offsets for the start timestamp
+new_offsets = konsumer.offsets_for_times(partitions)
+----
+
+[source,py]
+----
+#TODO: Print the new offset for each partition
+print("Setting partition {} to offset {}".format(part.partition, part.offset))
+----
+
+=== Extra Challenges and Questions Solutions
+
+. Seeking to the beginning of a partition examples are supplied below.
+.. Java
++
+[source,java]
+----
+@Override
+public void onPartitionsAssigned(Collection<TopicPartition> partitions) {
+  consumer.seekToBeginning(partitions);
+}
+----
++
+.. C#
++
+[source,c#]
+----
+.SetPartitionsAssignedHandler((c, partitions) =>
+{
+    var offsets = partitions.Select(tp => new TopicPartitionOffset(tp, Offset.Beginning));
+    return offsets;
+})
+----
++
+.. Python
++
+[source,python]
+----
+def my_on_assign(konsumer, partitions):
+    for p in partitions:
+        p.offset = OFFSET_BEGINNING
+    konsumer.assign(partitions)
+----
+
+image::../stophand.png[align="center",width=200]
+
+[.text-center]
+**STOP HERE. THIS IS THE END OF THE EXERCISE.**

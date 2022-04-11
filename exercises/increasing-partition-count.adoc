@@ -1,0 +1,187 @@
+:imagesdir: ./images/design
+:source-highlighter: rouge
+:icons: font
+= Lab {lab-number} Partitioning Considerations
+
+== a. Increasing the Topic Partitions
+
+The goal of this lab is to observe the behavior of a topic before and after the number of topic partitions are increased. In a production environment you might be observing a high lag for a consumer group. Recall from the Kafka documentation:
+
+[quote]
+Kafka is able to provide both ordering guarantees and load balancing over a pool of consumer processes. This is achieved by assigning the partitions in the topic to the consumers in the consumer group so that each partition is consumed by exactly one consumer in the group. By doing this we ensure that the consumer is the only reader of that partition and consumes the data in order. Since there are many partitions this still balances the load over many consumer instances. *Note however that there cannot be more consumer instances in a consumer group than partitions.*
+
+If you wanted to grow a consumer group beyond the number of topic partitions you would need to increase the number of topic partitions.  In this exercise we can observe the impact increasing the number of partitions has on key-partition mapping.
+
+=== Prerequisites
+
+. Navigate to the project folder:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *cd ~/confluent-dev*
+----
+
+. For this exercise we want to start from a clean state. First end all running containers, then run the Kafka cluster:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose down -v*
+...
+$ *docker-compose up -d zookeeper kafka control-center create-topics \
+     schema-registry producer1 producer2 producer3 producer4 \
+     webserver-avro*
+----
+
+=== Observe Key Partitioning
+
+It will take a few moments for the cluster to start producing data. While it is starting let's look at a command to view the key partition mapping for `driver-positions-avro`.
+
+. Run `kafkacat` in a terminal window to see the many command line options available. Let's focus on the options we will be using:
++
+`-C` Consume mode.
++
+`-e` Exit successfully when last message received.
++
+`-q` Be quiet - we don't want any extra diagnostic information.
++
+`-b` Bootstrap broker(s).
++
+`-t` Topic to consume from.
++
+`-f` Output formatting string - we are only interested in the message key `%k` and partition `%p`.
+. kafkacat will output a line for every record. To get the partition for each key the output is piped to `sort` and `uniq`:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *kafkacat -Ceq \
+    -b kafka \
+    -X enable.partition.eof=true \
+    -t driver-positions-avro \
+    -f 'Key:%k Partition:%p\n' \
+    | sort | uniq*
+Key:driver-1 Partition:1
+Key:driver-2 Partition:2
+Key:driver-3 Partition:1
+Key:driver-4 Partition:1
+----
+
+. You can confirm the key to partition mapping by observing the output on the right hand side of the web application at http://localhost:3002[http://localhost:3002^].
+
+. Increase the number of partitions with `kafka-topics`:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *kafka-topics --bootstrap-server kafka:9092 \
+    --alter \
+    --topic driver-positions-avro \
+    --partitions 10*
+----
++
+Java producers cache metadata and will start writing to the new partitions when the cache is refreshed. This is determined by the `metadata.max.age.ms` setting which defaults to 300000 milliseconds (5 minutes). For this reason it will take a maximum of 5 minutes before we see data being written to the new partitions.
++
+In the mean time we can take a quick deep dive on the default partitioner.
+
+=== DefaultPartitioner Deep Dive
+
+You can recreate some of the Kafka https://github.com/apache/kafka/blob/2.4.0/clients/src/main/java/org/apache/kafka/clients/producer/internals/DefaultPartitioner.java#L52[DefaultPartitioner^] logic in the Java 11 REPL (Read–Eval–Print Loop).  Using this you can see which partitions will be used for the message keys before and after the change in partition numbers.
+
+. Upgrade Java SDK. You'll be prompted to enter the password: *training*.
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *sudo apt install openjdk-11-jdk-headless*
+----
+
+. Start the Java 11 REPL with the following command. The command includes some shared JAR files in the class path:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ **kafka_bin=$(dirname $(which kafka-console-consumer))**
+  **share_jars="$kafka_bin/../share/java/kafka/*"**
+  **jshell --class-path "$share_jars"**
+|  Welcome to JShell -- Version 11.0.14.1
+|  For an introduction type: /help intro
+
+jshell> 
+----
+
+. Import packages for Kafka utilities and character set information.
++
+[subs="verbatim,quotes,attributes"]
+----
+jshell> **import org.apache.kafka.common.utils.Utils; import java.nio.charset.StandardCharsets; import static org.apache.kafka.common.utils.Utils.toPositive;**
+----
+
+. Define a function that take a `key` and `numPartitions` as parameters. The variable `keyBytes` is set with the UTF-8 bytes of the key. With this we can replicate the logic the Kafka client library uses as the default partitioner: hash the key with murmur2 algorithm and modulo it by the number of partitions
++
+[subs="verbatim,quotes,attributes"]
+----
+jshell> **int partition(String key, int numPartitions) {
+          byte[] keyBytes = key.getBytes(StandardCharsets.UTF_8);
+          return toPositive(Utils.murmur2(keyBytes)) % numPartitions;
+        }**
+|  created method partition(String,int)
+----
+
+. Which partition would the default partitioner use for a record with a key of `driver-1` on a topic using 3 partitions:
++
+[subs="verbatim,quotes,attributes"]
+----
+jshell> **System.out.println(partition("driver-1", 3))**
+1
+----
+
+. Which partition would the default partitioner use for a record with a key of `driver-1` on a topic using 10 partitions:
++
+[subs="verbatim,quotes,attributes"]
+----
+jshell> **System.out.println(partition("driver-1", 10))**
+5
+----
+
+. Exit the Java REPL by pressing Ctrl+D.
+
+. Confirm the partitions driver records are being delivered to in the web application http://localhost:3002[http://localhost:3002^].
+
+ . Consume records from `driver-positions-avro` and observe the keys in each partition.
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *kafkacat -Ceq \
+    -b kafka \
+    -X enable.partition.eof=true \
+    -t driver-positions-avro \
+    -f 'Key:%k Partition:%p\n' \
+    | sort | uniq*
+Key:driver-1 Partition:1
+Key:driver-1 Partition:5
+Key:driver-2 Partition:2
+Key:driver-2 Partition:9
+Key:driver-3 Partition:1
+Key:driver-3 Partition:8
+Key:driver-4 Partition:1
+Key:driver-4 Partition:2
+----
++
+Note that records with the key `driver-1` are now being delivered to partition 5. You will also notice `driver-1` has records in both partition 1 (from before the resize) and partition 5 (from after the resize).
+
+. This is the last exercise!
+.. Clean up your environment with:
++
+[subs="verbatim,quotes"]
+----
+$ *cd ~/confluent-dev*
+$ *docker-compose down -v*
+----
+.. Verify all services have been shut down by checking `docker-compose ps`
+.. If there are any issues with shutting down, run
++
+[subs="verbatim,quotes"]
+----
+$ *docker-nuke.sh*
+----
+
+image::../stophand.png[align="center",width=200]
+
+[.text-center]
+**STOP HERE. THIS IS THE END OF THE EXERCISE.**

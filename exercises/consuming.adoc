@@ -1,0 +1,229 @@
+:imagesdir: ./images/consuming
+:source-highlighter: rouge
+:icons: font
+= Lab {lab-number} Consuming Messages from Kafka
+
+== a. Kafka Consumer (Java, C#, Python)
+
+The goal of this lab is to create a simple Kafka consumer, that consumes records from the `driver-positions` topic.
+
+=== Prerequisites
+
+. Use the command in the table below to navigate to the project folder for your language. Click the associated hyperlink to open the API reference:
++
+[cols="1,3,2",options="header"]
+|===
+| Language
+| Command
+| API Reference
+
+| Java
+| `*cd ~/confluent-dev/challenge/java-consumer*`
+| https://kafka.apache.org/10/javadoc/org/apache/kafka/clients/consumer/KafkaConsumer.html[Class KafkaConsumer<K,V>^]
+
+| C#
+| `*cd ~/confluent-dev/challenge/dotnet-consumer*`
+| https://docs.confluent.io/current/clients/confluent-kafka-dotnet/api/Confluent.Kafka.IConsumer-2.html[Interface IConsumer<TKey, TValue>^]
+
+| Python
+| `*cd ~/confluent-dev/challenge/python-consumer*`
+| https://docs.confluent.io/current/clients/confluent-kafka-python/index.html#consumer[class confluent_kafka.Consumer^]
+
+|===
+
+. Run the Kafka cluster:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose up -d zookeeper kafka control-center create-topics webserver*
+----
++
+image::java-consumer.png[width=80%,pdfwidth=80%,align=center]
+
+. If you are completing the C# or Python exercise, install the dependencies.
+.. For C#:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *dotnet restore*
+----
++ 
+.. For Python:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *pip3 install -r requirements.txt*
+----
++
+. Open the project in Visual Studio Code:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *code .*
+----
+
+=== Writing the Consumer
+
+. Run the producer solution from the previous exercise in a terminal window. This will give you live data in the `driver-positions` topic. From a terminal window run:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *cd ~/confluent-dev/solution/java-producer && \
+  ./gradlew run --console plain*
+----
+
+. Open the implementation file for your language of choice
+** Java: `src/main/java/clients/Consumer.java`
+** C#: `Program.cs`
+** Python: `main.py`.
+
+. Locate the `TODO` comments in your implementation file. Use the API reference for your language to attempt each challenge. Solutions are provided at the end of this lab and in the `~/confluent-dev/solution` folder.
+
+. At any time run the application by selecting the menu *Run* -> *Start Debugging* in VS Code. As you complete the challenges try to produce a similar output from your application:
++
+[subs="verbatim,quotes,attributes"]
+----
+Starting Java Consumer.
+Key:driver-1 Value:47.618579,-122.355081 [partition 1]
+Key:driver-1 Value:47.618577152452055,-122.35520620652974 [partition 1]
+Key:driver-1 Value:47.61857902704408,-122.35507321130525 [partition 1]
+Key:driver-1 Value:47.618579488930855,-122.35494018791431 [partition 1]
+Key:driver-1 Value:47.61857995081763,-122.35480716452278 [partition 1]
+...
+----
+
+. Leave your consumer running. In a terminal window run this command to inspect the status of your consumer group: 
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-consumer-groups \
+    --bootstrap-server kafka:9092 \
+    --describe \
+    --group java-consumer \
+    --group csharp-consumer \
+    --group python-consumer*
+
+GROUP           TOPIC            PARTITION  CURRENT-OFFSET  LOG-END-OFFSET  LAG ...
+csharp-consumer driver-positions 0          -               0               -
+csharp-consumer driver-positions 1          2148            2153            5
+csharp-consumer driver-positions 2          -               0               -
+----
++
+You can see some interesting metrics for your topic consumption. `CURRENT-OFFSET` is the last _committed_ offset from your consumers. `LOG-END-OFFSET` is the last offset in each partition. `LAG` is _how far behind_ the consumption is, or in other words `LOG-END-OFFSET - CURRENT-OFFSET`. These metrics are very useful when checking if your consumption is keeping up with production.
+
+. When you have completed the challenges, stop the debugger in VS Code.
+. Return to the terminal window running the producer solution.  Press `Ctrl+C` to exit the producer.
+
+=== Extra Challenges and Questions
+
+. End your processing, and launch the consumer again. You'll see that the second time you run the application processing begins from a non-zero offset. Does `auto.offset.reset` apply the second time the application is run? 
+. How do consumers know where to begin their processing? 
+. Can you think of a way to make your next run of the application begin at the offset at the start of each partition?
+. Experiment with consumer settings of `fetch.max.wait.ms` (default: 500ms) and `fetch.min.bytes` (default: 1 byte). How would you expect the consumer to behave with the settings below?
+.. Java
++
+[source,java]
+----
+settings.put(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, "5000");
+settings.put(ConsumerConfig.FETCH_MIN_BYTES_CONFIG, "5000000");
+----
++
+.. C#
++
+[source,c#]
+----
+FetchWaitMaxMs = 5000,
+FetchMinBytes = 5000000,
+----
++
+.. Python
++
+[source,python]
+----
+"fetch.wait.max.ms": "5000",
+"fetch.min.bytes": "5000000"
+----
+
+<<<
+
+=== Java Solution
+
+.solution/java-consumer/src/main/java/clients/Consumer.java
+[source,java]
+----
+// TODO: Poll for available records
+final ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(100));
+----
+
+[source,java]
+----
+// TODO: print the contents of the record
+System.out.printf("Key:%s Value:%s [partition %s]\n",
+    record.key(), record.value(), record.partition());
+----
+
+=== C# Solution
+
+.solution/dotnet-consumer/Program.cs
+[source,c#]
+----
+
+// TODO: Consume available records
+var cr = consumer.Consume(cts.Token);
+----
+
+[source,c#]
+----
+// TODO: print the contents of the record
+Console.WriteLine($"Key:{cr.Message.Key} Value:{cr.Message.Value} [partition {cr.Partition.Value}]");
+----
+
+=== Python Solution
+
+.solution/python-consumer/main.py
+[source,py]
+----
+#TODO: Poll for available records
+msg = consumer.poll(1.0)
+----
+
+[source,py]
+----
+#TODO: print the contents of the record
+print("Key:{} Value:{} [partition {}]".format(
+    msg.key().decode('utf-8'),
+    msg.value().decode('utf-8'),
+    msg.partition()
+))
+----
+
+=== Extra Challenges and Questions Solutions
+
+. `auto.offset.reset` would not be used on the second launch of your consumer. `auto.offset.reset` is used when there is no committed position (e.g. the group is first initialized) or when an offset is out of range.
+. An instance in a consumer group sends its offset commits and fetches to a group coordinator broker. The group coordinators read from and write to special compacted Kafka topic named ___consumer_offsets_.
++
+Curious about the ___consumer_offsets_ topic? You can consume message on this topic while your consumer runs with the command below: 
++
+[subs="verbatim,quotes"]
+----
+$ *kafka-console-consumer --bootstrap-server kafka:9092 \
+--topic __consumer_offsets \
+--formatter "kafka.coordinator.group.GroupMetadataManager\$OffsetsMessageFormatter" \
+| grep 'driver-positions'*
+----
++
+. You could begin consumption at the start of each partition simply by updating your consumer to use a new `GROUP_ID`. Also, the utility `kafka-consumer-groups` has a parameter `--to-earliest` which will set  offsets to earliest offset. In the next exercise we will see how to programmatically _seek_ to an offset for consumption.
+. With the supplied settings for `fetch.max.wait.ms` and `fetch.min.bytes` we see results roughly every 5 seconds. From the http://kafka.apache.org/documentation/#consumerconfigs[consumer documentation^]:
++
+[quote]
+____
+fetch.max.wait.ms: The maximum amount of time the server will block before answering the fetch request if there isn't sufficient data to immediately satisfy the requirement given by fetch.min.bytes.
+____
+
+image::../stophand.png[align="center",width=200]
+
+[.text-center]
+**STOP HERE. THIS IS THE END OF THE EXERCISE.**
+
+<<<
+

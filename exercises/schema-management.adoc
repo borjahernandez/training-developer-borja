@@ -1,0 +1,302 @@
+:imagesdir: ./images/schema-management
+:source-highlighter: rouge
+:icons: font
+= Lab {lab-number} Schema Management in Apache Kafka
+
+== a. Schema Registry, Avro Producer and Consumer (Java, C#, Python)
+
+The goal of this lab is to update our simple producer to write to an AVRO serialized topic `driver-positions-avro`. The code is very similar to your previous producer lab. The code will now communicate with Schema Registry to store and retrieve schemas, and will serialize the structured data in AVRO format.
+
+=== Prerequisites
+
+. Use the command in the table below to navigate to the project folder for your language:
++
+[cols="1,5",options="header"]
+|===
+| Language
+| Command
+
+| Java
+| `*cd ~/confluent-dev/challenge/java-producer-avro*`
+
+| C#
+| `*cd ~/confluent-dev/challenge/dotnet-producer-avro*`
+
+
+| Python
+| `*cd ~/confluent-dev/challenge/python-producer-avro*`
+|===
+
+. Run the Kafka cluster:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose up -d zookeeper kafka control-center create-topics \
+     schema-registry webserver-avro*
+----
++
+image::lab-diagram.svg[width=100%,pdfwidth=100%,align=center]
++ 
+You have some new containers you haven't seen before, Schema Registry and an updated version of the web application that can deserialize AVRO serialized data.
+
+=== Writing the Avro Producer
+
+. If you are completing the *Java* exercise: 
+.. Inspect the schema file at `src/main/avro/position_value.avsc`. 
+.. The supplied `build.gradle` file contains Avro plugin `com.commercehub.gradle.plugin.avro` which includes a task `generateAvroJava` to generate POJOs (Plain Old Java Objects/classes) from any Avro schemas in the project. 
+.. Use `gradle` to generate the AVRO class:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *./gradlew build*
+----
+
+. If you are completing the *C#* exercise:
+.. Inspect the schema file at `position_value.avsc`.
+.. Install the  `avrogen` tool:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *dotnet tool install -g Confluent.Apache.Avro.AvroGen*
+----
++
+[WARNING]
+====
+You may need to restart the VM to use `avrogen` in the next step. After restarting, you'll need to run again:
+
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose up -d zookeeper kafka control-center create-topics schema-registry webserver-avro*
+----
+====
++
+.. Use the `avrogen` to generate the AVRO class:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *avrogen -s position_value.avsc .*
+----
++
+.. Restore dependencies for your project:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *dotnet restore*
+----
+
+. If you are completing the *Python* exercise:
+.. Inspect the schema file at `position_value.avsc`.
+.. Install the dependencies:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *pip3 install -r requirements.txt*
+----
+
+. Open the project in Visual Studio Code:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *code .*
+----
+
+. Open the implementation file for your language of choice. Can you determine what has changed from the previous producer exercise?
+** Java `src/main/java/clients/Producer.java`
+** C#: `Program.cs`
+** Python: `main.py`
+
+
+. Run the application by selecting the menu *Run* -> *Start Debugging* in VS Code. You will see your application output:
++
+[subs="verbatim,quotes,attributes"]
+----
+Starting Java Avro producer.
+...
+Sent Key:driver-1 Latitude:47.618579 Longitude:-122.355081
+Sent Key:driver-1 Latitude:47.618577152452055 Longitude:-122.35520620652974
+Sent Key:driver-1 Latitude:47.61857902704408 Longitude:-122.35507321130525
+Sent Key:driver-1 Latitude:47.618579488930855 Longitude:-122.35494018791431
+...
+----
+
+. Leave your Avro producer application running. You can view the web application at http://localhost:3002[http://localhost:3002^].
+
+. Stop the debugger in VS Code.
+
+=== Inspecting the Schema Registry REST API
+
+Next you will inspect the contents and settings of Schema Registry via the REST API. See more details about the API at https://docs.confluent.io/current/schema-registry/develop/api.html[Schema Registry API Reference^].
+
+. Find all the *subjects* in your Schema Registry:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *curl schema-registry:8081/subjects*
+["driver-positions-avro-value"]
+----
++
+. How many versions do you see for your subject?
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *curl schema-registry:8081/subjects/driver-positions-avro-value/versions*
+[1]
+----
++
+. View the contents of version 1 of the schema:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *curl -s schema-registry:8081/subjects/driver-positions-avro-value/versions/1*
+{"subject":"driver-positions-avro-value","version":1,"id":1,"schema":"{\"type\":\"record\",\"name\":\"PositionValue\",\"namespace\":\"clients.avro\",\"fields\":[{\"name\":\"latitude\",\"type\":\"double\"},{\"name\":\"longitude\",\"type\":\"double\"}]}"}
+----
++
+You can get the schema for a specific version of a subject with the `/subjects/(string: subject)/versions/(versionId: version)/schema` path. You can pipe this to `jq` for pretty printing:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *curl -s schema-registry:8081/subjects/driver-positions-avro-value/versions/1/schema \
+  | jq .*
+{
+  "type": "record",
+  "name": "PositionValue",
+  "namespace": "clients.avro",
+  "fields": [
+    {
+      "name": "latitude",
+      "type": "double"
+    },
+    {
+      "name": "longitude",
+      "type": "double"
+    }
+  ]
+}
+----
++
+. Our Avro producer self-registered the `driver-positions-avro-value` schema subject when it produced its first record. In a production environment, we would typically have pre-registered the schema subject using the Schema Registry REST API. Let's run the command to do so now and observe the result.
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *curl -XPOST  -H "Content-Type: application/vnd.schemaregistry.v1+json"  schema-registry:8081/subjects/driver-positions-avro-value/versions/  -d '{ "schema":"{\"type\":\"record\",\"name\":\"PositionValue\",\"namespace\":\"clients.avro\",\"fields\":[{\"name\":\"latitude\",\"type\":\"double\"},{\"name\":\"longitude\",\"type\":\"double\"}]}"}'*
+{"id":1}
+----
+The command responds with the schema ID.
+
+
+. Check the default compatibility setting:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *curl schema-registry:8081/config*
+{"compatibilityLevel":"BACKWARD"}
+----
+
+=== Writing the Avro Consumer
+
+. Use the command in the table below to navigate to the project folder for your language:
++
+[cols="1,5",options="header"]
+|===
+| Language
+| Command
+
+| Java
+| `*cd ~/confluent-dev/challenge/java-consumer-avro*`
+
+
+| C#
+| `*cd ~/confluent-dev/challenge/dotnet-consumer-avro*`
+
+
+| Python
+| `*cd ~/confluent-dev/challenge/python-consumer-avro*`
+|===
+
+. Complete the same initialization steps you did for the producer exercise.
+.. Java
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *./gradlew build*
+----
++
+.. C#
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *avrogen -s position_value.avsc . ; dotnet restore*
+----
++
+.. Python
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *pip3 install -r requirements.txt*
+----
+
+. Open the project in Visual Studio Code:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *code .*
+----
+
+. Run the application by selecting the menu *Run* -> *Start Debugging* in VS Code. You will see your application output:
++
+[subs="verbatim,quotes,attributes"]
+----
+Starting Java Avro Consumer.
+Key:driver-1 Latitude:47.618579 Longitude:-122.355081 [partition 1]
+Key:driver-1 Latitude:47.618577152452055 Longitude:-122.35520620652974 [partition 1]
+Key:driver-1 Latitude:47.61857902704408 Longitude:-122.35507321130525 [partition 1]
+Key:driver-1 Latitude:47.618579488930855 Longitude:-122.35494018791431 [partition 1]
+Key:driver-1 Latitude:47.61857995081763 Longitude:-122.35480716452278 [partition 1]
+...
+----
+
+=== Extra Challenges and Questions
+
+. Inspect the logs of your Schema Registry docker container:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose logs schema-registry | grep '/schemas/ids/1'*
+----
++
+How many requests to `GET /schemas/ids/1` do you see?  Can you explain the number of requests?
+. Modify the earlier `curl -XPOST` command to register a new schema version that doesn't meet the current Schema Registry compatibility setting.
+. Advanced challenge: Try adding a field with a default value to your AVRO producer, for example:
++
+[source,json]
+----
+{"name": "latitude", "type": "double"},
+{"name": "longitude", "type": "double"},
+{"name": "altitude", "type": "double", "default": 0.0}
+----
++
+Would this be BACKWARD compatible? Would this be FORWARD compatible? See the documentation for https://docs.confluent.io/current/schema-registry/avro.html#compatibility-types[Compatibility Types^]. Try producing data to your existing topic with a dummy value for altitude (fun fact: Seattle's highest point is 512ft). Can the consumer application or web application still consume from this topic?
+
+
+<<<
+
+=== Extra Challenges and Questions Solutions
+
+. A consumer loads a schema when it first sees a record for the schema id, and caches the result for subsequent records.
+. Adding a field without a default value would not meet the BACKWARD compatibility requirement, for example:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *curl -XPOST  -H "Content-Type: application/vnd.schemaregistry.v1+json"  schema-registry:8081/subjects/driver-positions-avro-value/versions/  -d '{ "schema":"{\"type\":\"record\",\"name\":\"PositionValue\",\"namespace\":\"clients.avro\",\"fields\":[{\"name\":\"latitude\",\"type\":\"double\"},{\"name\":\"longitude\",\"type\":\"double\"},{\"name\":\"new_field\",\"type\":\"double\"}]}"}'*
+{"error_code":409,"message":"Schema being registered is incompatible with an earlier schema"}
+----
++
+. Adding a field with a default value is both FORWARD and BACKWARD compatible. If you were to produce data to the `driver-positions-avro` topic with a value for altitude consumers built with version 1 of the schema would ignore the values for altitude, making this update FORWARD compatible.
+
+image::../stophand.png[align="center",width=200]
+
+[.text-center]
+**STOP HERE. THIS IS THE END OF THE EXERCISE.**
+
+<<<
+

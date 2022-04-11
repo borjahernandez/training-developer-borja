@@ -1,0 +1,216 @@
+:imagesdir: ./images/ksqldb
+:source-highlighter: rouge
+:icons: font
+= Lab {lab-number} Event Streaming Apps with ksqlDB
+
+The goal of this lab is to build an augmented (or enriched) topic from our sources of driver and position data. This position data is created by our AVRO Kafka producer, that we created earlier. The driver data is delivered manually to Kafka using the tool `kafka-console-producer`.
+
+
+== a. ksqlDB - Join a Stream and a Table 
+
+=== Prerequisites
+
+. Navigate to the project folder:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *cd ~/confluent-dev*
+----
+
+. Run the Kafka cluster:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose up -d zookeeper kafka control-center \
+     schema-registry postgres create-topics \
+     producer1 producer2 producer3 producer4 \
+     ksqldb-server webserver-ksql*
+----
++
+image::lab-ksql-diagram.svg[width=100%,pdfwidth=100%,align=center]
++ 
+You have created a new `ksqldb-server` container, a webserver consuming the new topic, and containers to simulate four drivers driving around a city.
+
+=== Write Driver Profiles data to Kafka
+
+We use the `kakfa-console-producer` to write information about each driver (name, surname, car model, etc.) to topic `driver-profiles-ksql`.
+
+. Run this command to start the `kafka-console-producer`:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *kafka-console-producer \
+    --bootstrap-server kafka:9092 \
+    --topic driver-profiles-ksql \
+    --property parse.key=true \
+    --property key.separator=:*
+>
+----
+
+. Now, the producer is waiting for inputs. Copy the messages below and paste them in the Terminal:
++
+[subs="verbatim,quotes,attributes"]
+----
+*driver-1:Randall|Palmer|Toyota|Corolla
+driver-2:Razı|İnönü|Nissan|Sentra
+driver-3:美加子|桐山|Subaru|Forester
+driver-4:David|Chandler|Tesla|S*
+----
++
+NOTE: Note that you are producing messages with Key (driverId). The Value is an entire String with the fields delimited by "|".
+
+. Exit `kafka-console-producer` pressing `Ctrl+C`.
+
+=== Create a Table from Drive Profiles data
+. Execute the ksqlDB CLI:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *ksql http://ksqldb-server:8088*
+...
+Copyright 2017-2021 Confluent Inc.
+
+CLI v7.0.0, Server v7.0.0 located at http://ksqldb-server:8088
+Server Status: RUNNING
+
+Having trouble? Type 'help' (case-insensitive) for a rundown of how things work!
+
+ksql>
+----
+
+. Create a table from the topic `driver-profiles-ksqlavro`:
++
+[subs="verbatim,quotes,attributes"]
+----
+ksql> *CREATE TABLE DRIVER (driverkey VARCHAR PRIMARY KEY, firstname VARCHAR, lastname VARCHAR, make VARCHAR, model VARCHAR) 
+      WITH (KAFKA_TOPIC='driver-profiles-ksql', VALUE_FORMAT='delimited', VALUE_DELIMITER='|');*
+
+ Message       
+---------------
+ Table created 
+---------------
+----
+
+. Set the property `auto.offset.reset` to `earliest` such as that ksqlDB returns data from the very beginning of a table or stream when querying:
++
+[subs="verbatim,quotes,attributes"]
+----
+ksql> *SET 'auto.offset.reset' = 'earliest';*
+Successfully changed local property 'auto.offset.reset' to 'earliest'. Use the UNSET command to revert your change.
+----
+
+. Verify that there is data in the table `DRIVER`:
++
+[subs="verbatim,quotes,attributes"]
+----
+ksql> **SELECT * FROM DRIVER EMIT CHANGES;**
++-------------+-------------+------------+----------+------------+
+|DRIVERKEY    |FIRSTNAME    |LASTNAME    |MAKE      |MODEL       |
++-------------+-------------+------------+----------+------------+
+|driver-2     |Razı         |İnönü       |Nissan    |Narkhede    |
+|driver-6     |William      |Peterson    |GM        |Berglund    |
+|driver-1     |Randall      |Palmer      |Toyota    |Offset      |
+...
+----
++
+and stop the query with `Ctrl+C`.
+
+=== Create a Stream and Table Join
+
+. Create a stream from the topic `driver-positions-avro`:
++
+[subs="verbatim,quotes,attributes"]
+----
+ksql> *CREATE STREAM DRIVERPOSITIONS (driverkey VARCHAR KEY, latitude DOUBLE, longitude DOUBLE) 
+      WITH (KAFKA_TOPIC='driver-positions-avro', VALUE_FORMAT='avro');*
+
+ Message        
+----------------
+ Stream created 
+----------------
+----
+
+. To augment data we can join the `DRIVERPOSITIONS` stream the `DRIVER` tables. Create the join:
++
+[subs="verbatim,quotes,attributes"]
+----
+ksql> *CREATE STREAM DRIVERAUGMENTED 
+      WITH (kafka_topic='driver-augmented-avro', value_format='avro')
+      AS
+      SELECT 
+        driverpositions.driverkey AS driverkey,
+        driverpositions.latitude, 
+        driverpositions.longitude,
+        driver.firstname,
+        driver.lastname,
+        driver.make,
+        driver.model
+      FROM driverpositions 
+      LEFT JOIN driver on driverpositions.driverkey = driver.driverkey
+      EMIT CHANGES;*
+
+ Message                                      
+----------------------------------------------
+ Created query with ID CSAS_DRIVERAUGMENTED_5
+----------------------------------------------
+----
++
+This is a *create stream as select* (or CSAS) command that will create a persistent query stream from an existing stream. We are now populating the `driver-augmented-avro` topic with the results of this query. You can confirm this in another terminal window with `kafka-avro-console-consumer`:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *kafka-avro-console-consumer \
+    --bootstrap-server kafka:9092 \
+    --property schema.registry.url=http://schema-registry:8081 \
+    --topic driver-augmented-avro \
+    --property print.key=true \
+    --key-deserializer=org.apache.kafka.common.serialization.StringDeserializer \
+    --from-beginning*
+----
++
+Press Ctrl+C to exit `kafka-avro-console-consumer`.
+
+. Return to your ksqlDB CLI and verify the join:
++
+[subs="verbatim,quotes,attributes"]
+----
+ksql> **SELECT * FROM DRIVERAUGMENTED EMIT CHANGES;**
+----
++
+Allow the query to run until it has caught up with the live data coming from the producers. You are now seeing live driver data augmented with _joined_ driver profile data. If it is taking a long time for the `SELECT` statement to catch up you can press `Ctrl+C` and enter `SET 'auto.offset.reset' = 'latest';` to set ksqlDB read from the *latest* offset.
++
+Stop the query with `Ctrl+C`.  Did you see `null` values in the driver profile columns at the beginning of the results?  The query is a `LEFT JOIN` - we will see records from the left side (`DRIVERPOSITIONS`) if there isn't a matching record on the right side (`DRIVER`).  Where you see `null` values there isn't a matching record because the position was written to the topic _before_ there was a matching entry in `DRIVER` table.
+
+. Visit the web application consuming from the `driver-augmented-avro` topic at http://localhost:3004/[http://localhost:3004/^]
+
+. Exit the ksqlDB CLI by pressing `Ctrl+D`.
+
+<<<
+
+=== Extra Challenges and Questions
+. In this exercise the topics `driver-profiles-ksql` and `driver-positions-avro` are joined - what properties do the topics need in common for a successful join?
+
+=== Extra Challenges and Questions Solutions
+
+. When you use ksqlDB to join streaming data, you must ensure that your streams and tables are co-partitioned. To be considered co-partitioned we look at 3 properties:
+.. Records have the same keying scheme - both topics are keyed on `driver-id`.
+.. Records have the same number of partitions - both topics have 3 partitions.
+.. Records have the same partitioning strategy - the producers and Kafka Connect are using the default murmur2 hash partitioner.
+
+These properties guarantee that records of the same key will always be delivered to the same partition number in both topics. For example, `driver-3` will be delivered to partition 1 for both `driver-profiles-ksql` and `driver-positions-avro`.
+
+=== Clean-up
+
+. Run this command to stop all containers:
++
+[subs="verbatim,quotes,attributes"]
+----
+$ *docker-compose down -v*
+----
+
+image::../stophand.png[align="center",width=200]
+
+[.text-center]
+**STOP HERE. THIS IS THE END OF THE EXERCISE.**
+
+<<<
