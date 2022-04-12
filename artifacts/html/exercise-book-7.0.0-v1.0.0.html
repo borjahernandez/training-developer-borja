@@ -697,12 +697,12 @@ pre.rouge {
 <li><a href="#_a_kafka_connect_database_to_kafka">a. Kafka Connect - Database to Kafka</a></li>
 </ul>
 </li>
-<li><a href="#_lab_12_design_decisions">Lab 12 Design Decisions</a>
+<li><a href="#_lab_12_challenges_with_offsets">Lab 12 Challenges with Offsets</a>
 <ul class="sectlevel2">
 <li><a href="#_a_kafka_consumer_offsetsfortimes_java_c_python">a. Kafka Consumer - offsetsForTimes (Java, C#, Python)</a></li>
 </ul>
 </li>
-<li><a href="#_lab_13_design_decisions">Lab 13 Design Decisions</a>
+<li><a href="#_lab_13_partitioning_considerations">Lab 13 Partitioning Considerations</a>
 <ul class="sectlevel2">
 <li><a href="#_a_increasing_the_topic_partitions">a. Increasing the Topic Partitions</a></li>
 </ul>
@@ -726,7 +726,7 @@ pre.rouge {
  <br></p>
 </div>
 <div class="paragraph text-center">
-<p><span class="big">Copyright © Confluent, Inc. 2014-2021. <a href="https://www.confluent.io/confluent-privacy-statement/">Privacy Policy</a> | <a href="https://www.confluent.io/terms-of-use/">Terms &amp; Conditions</a>.<br>
+<p><span class="big">Copyright © Confluent, Inc. 2014-2022. <a href="https://www.confluent.io/confluent-privacy-statement/">Privacy Policy</a> | <a href="https://www.confluent.io/terms-of-use/">Terms &amp; Conditions</a>.<br>
 Apache, Apache Kafka, Kafka and the Kafka logo are trademarks of the<br>
 <a href="http://www.apache.org/">Apache Software Foundation</a></span></p>
 </div>
@@ -2442,7 +2442,7 @@ Sent Key:driver-1 Latitude:47.618579488930855 Longitude:-122.35494018791431
 </div>
 </div>
 <div class="sect3">
-<h4 id="_inspecting_the_schema_registry_rest_api">Inspecting the Schema Registry REST API</h4>
+<h4 id="_optional_inspecting_the_schema_registry_rest_api"><strong>OPTIONAL:</strong> Inspecting the Schema Registry REST API</h4>
 <div class="paragraph">
 <p>Next you will inspect the contents and settings of Schema Registry via the REST API. See more details about the API at <a href="https://docs.confluent.io/current/schema-registry/develop/api.html" target="_blank" rel="noopener">Schema Registry API Reference</a>.</p>
 </div>
@@ -2852,7 +2852,7 @@ Solution:
 </div>
 <div class="imageblock text-center">
 <div class="content">
-<img src="./images/ksqldb/ksqldb.png" alt="ksqldb" width="80%">
+<img src="./images/ksqldb/lab-ksql-diagram.svg" alt="lab ksql diagram" width="100%">
 </div>
 </div>
 <div class="paragraph">
@@ -3621,7 +3621,7 @@ Topic: driver-profiles-avro	PartitionCount: 3	ReplicationFactor: 1	Configs: clea
 </div>
 </div>
 <div class="sect1">
-<h2 id="_lab_12_design_decisions">Lab 12 Design Decisions</h2>
+<h2 id="_lab_12_challenges_with_offsets">Lab 12 Challenges with Offsets</h2>
 <div class="sectionbody">
 <div class="sect2">
 <h3 id="_a_kafka_consumer_offsetsfortimes_java_c_python">a. Kafka Consumer - offsetsForTimes (Java, C#, Python)</h3>
@@ -3906,7 +3906,7 @@ driver-1,47.61265662130749,-122.34530262107957</pre>
 </div>
 </div>
 <div class="sect1">
-<h2 id="_lab_13_design_decisions">Lab 13 Design Decisions</h2>
+<h2 id="_lab_13_partitioning_considerations">Lab 13 Partitioning Considerations</h2>
 <div class="sectionbody">
 <div class="sect2">
 <h3 id="_a_increasing_the_topic_partitions">a. Increasing the Topic Partitions</h3>
@@ -4306,7 +4306,7 @@ root@tools:/# <strong>./gradlew run</strong></pre>
 <div id="footer">
 <div id="footer-text">
 Version 7.0.0-v1.0.0<br>
-Last updated 2022-04-08 15:53:45 UTC
+Last updated 2022-04-11 15:58:54 UTC
 </div>
 </div>
 </body>
