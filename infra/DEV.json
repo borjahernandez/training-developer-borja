@@ -1,7 +1,10 @@
 {
     "name" : "DEV",
     "virtual_machine_ami_tag" : {
-        "us-west-2" : "DEV CP 7.0 with docker images"
+        "us-west-2" : "PROD CP 7.0 with docker images",
+        "eu-central-1" : "PROD CP 7.0 with docker images",
+        "ap-southeast-2" : "PROD CP 7.0 with docker images",
+        "ap-south-1" : "PROD CP 7.0 with docker images"
       },
     "virtual_machine_type" : "m5.xlarge",
     "virtual_machine_startup" : [
