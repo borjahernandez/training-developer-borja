@@ -45,25 +45,22 @@ $ *code .*
 . The `filter()` method can be defined using a lambda expression where the inputs are the `key` and `value` of the event. It also requires a predicate/condition to define if the event is filtered or not. +
 Go to Lines 88-89 in the code and try to define the predicate to filter out events from `driver-2`.
 +
-+++ <details><summary> +++
-Solution:
-+++ </summary><div> +++
-+
+.Solution
+[%collapsible]
+====
 [source,java]
 ----
 final KStream<String, PositionValue> positionsFiltered = positions.filter(
         (key,value) -> !key.equals("driver-2"));
-
 ----
-+++ </div></details> +++
+====
 
 . The `mapValues()` method applies a transformation to the value of each event. You can use a lambda expression to define the transformation where the input is just the value. +
 Go to Lines 96-104 and try to complete the missing pieces to change the value from PositionValue type to PositionString type, which contains a new field `positionString`.
 +
-+++ <details><summary> +++
-Solution:
-+++ </summary><div> +++
-+
+.Solution
+[%collapsible]
+====
 [source,java]
 ----
 final KStream<String, PositionString> positionsString = positionsFiltered.mapValues(
@@ -75,11 +72,8 @@ final KStream<String, PositionString> positionsString = positionsFiltered.mapVal
         return new PositionString(latitude, longitude, positionString);
     }
 );
-
 ----
-+++ </div></details> +++
-
-
+====
 
 . Run the application by selecting the menu *Run* -> *Start Debugging* in VS Code.
 . View the new topic with the `kafka-avro-console-consumer` tool:
