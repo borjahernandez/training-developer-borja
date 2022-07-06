@@ -1,4 +1,4 @@
-:course-tag: 7.0.0-v1.0.0
+:course-tag: 7.0.0-v1.0.2
 = Confluent Developer Skills for Building Apache Kafka®: Exercise Book
 :revnumber: {course-tag}
 :toc:

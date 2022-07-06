@@ -1,6 +1,6 @@
 :cp-version: 7.0.0
 :ak-version: 3.0.0
-:course-tag: 7.0.0-v1.0.0
+:course-tag: 7.0.0-v1.0.2
 = Lab {lab-number} Fundamentals of Apache Kafka
 :imagesdir: ./images/fundamentals
 :source-highlighter: rouge

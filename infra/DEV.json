@@ -10,7 +10,7 @@
     "virtual_machine_startup" : [
         "#!/bin/bash",
         "su training <<'EOF'",
-        "exercise_download.sh DEV-7.0.0-v1.0.0.zip exercise-book-7.0.0-v1.0.0.html \"Confluent Developer Skills for Building Apache Kafka: Exercise Book\"",
+        "exercise_download.sh DEV-7.0.0-v1.0.2.zip exercise-book-7.0.0-v1.0.2.html \"Confluent Developer Skills for Building Apache Kafka: Exercise Book\"",
         "EOF",
         "echo started warming $(date) >> ebs_warming.txt",
         "dd if=/dev/nvme0n1 of=/dev/null bs=1M",
