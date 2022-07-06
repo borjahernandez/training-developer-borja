@@ -24,7 +24,7 @@ hs_err_pid*
 
 build/
 artifacts/
-.DS_Store
+**/.DS_Store
 temp/
 assets/from_vm/
 .vscode/%
